@@ -51,31 +51,43 @@ func (p *Pool) Get() net.Conn {
 	p.conns[idx] = p.dial()
 	return p.conns[idx]
 }
-
 func (p *Pool) isAlive(c net.Conn) bool {
 	if c == nil {
 		return false
 	}
-	c.SetWriteDeadline(time.Now().Add(200 * time.Millisecond))
+
+	if err := c.SetWriteDeadline(time.Now().Add(3 * time.Second)); err != nil {
+		return false
+	}
 	_, err := c.Write(nil)
 	c.SetWriteDeadline(time.Time{})
 	return err == nil
 }
 
 func (p *Pool) healthChecker() {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
+
 	for range ticker.C {
 		p.mu.Lock()
-		for i, c := range p.conns {
-			if c == nil || !p.isAlive(c) {
-				println("reconnect")
+		alive := make([]net.Conn, 0, len(p.conns))
+
+		for _, c := range p.conns {
+
+			if c != nil && p.isAlive(c) {
+				alive = append(alive, c)
+			} else {
 				if c != nil {
 					c.Close()
 				}
-				p.conns[i] = p.dial()
 			}
 		}
+
+		for len(alive) < p.size {
+			alive = append(alive, p.dial())
+		}
+
+		p.conns = alive
 		p.mu.Unlock()
 	}
 }

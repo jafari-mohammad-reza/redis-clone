@@ -2,9 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
+	"io"
 	"log"
 	"net"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -57,6 +60,13 @@ func handleConn(parentCtx context.Context, conn net.Conn) {
 		for {
 			_, err := conn.Read(buf)
 			if err != nil {
+				if errors.Is(err, net.ErrClosed) ||
+					errors.Is(err, io.EOF) ||
+					isConnectionReset(err) {
+
+					continue
+				}
+
 				cancel()
 				return
 			}
@@ -81,4 +91,21 @@ func handleConn(parentCtx context.Context, conn net.Conn) {
 			}
 		}
 	}
+}
+func isConnectionReset(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var opErr *net.OpError
+	if errors.As(err, &opErr) {
+		if opErr.Err.Error() == "read: connection reset by peer" {
+			return true
+		}
+
+		if strings.Contains(opErr.Err.Error(), "forcibly closed") {
+			return true
+		}
+	}
+	return false
 }
