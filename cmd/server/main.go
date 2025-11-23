@@ -140,11 +140,24 @@ func dispatchCommand(cmd *Command) resp.Value {
 		return handleRPush(cmd)
 	case string(pkg.RLEN_CMD):
 		return handleRLen(cmd)
+	case string(pkg.RRANGE_CMD):
+		return handleRRange(cmd)
 	default:
 		return resp.Value{Typ: "error", Str: "ERR unknown command '" + cmd.Name + "'"}
 	}
 }
+func handleRRange(cmd *Command) resp.Value {
+	if len(cmd.Args) < 3 {
+		return resp.Value{Typ: "error", Str: "ERR wrong number of arguments for 'GET' command"}
+	}
 
+	items, err := keyStorage.RRange(cmd.Args[0], cmd.Args[1], cmd.Args[2], 0)
+	if err != nil {
+		return resp.Value{Typ: "null"}
+	}
+
+	return resp.Value{Typ: "string", Str: items}
+}
 func handlePing(cmd *Command) resp.Value {
 	if len(cmd.Args) == 0 {
 		return resp.Value{Typ: "string", Str: "PONG"}

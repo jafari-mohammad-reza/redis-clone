@@ -205,3 +205,62 @@ func TestStorage_Flush_ConcurrentWithSet(t *testing.T) {
 	<-done
 	<-done
 }
+
+func TestRRange(t *testing.T) {
+	s := NewStorage()
+
+	s.RPush("mylist", []string{"a", "b", "c", "d", "e"}, 0)
+
+	tests := []struct {
+		key  string
+		from string
+		to   string
+		want string
+	}{
+		{"mylist", "0", "5", "a,b,c,d,e"},
+		{"mylist", "1", "4", "b,c,d"},
+		{"mylist", "0", "1", "a"},
+		{"mylist", "2", "2", ""},
+		{"mylist", "0", "0", ""},
+		{"missing", "0", "5", ""},
+	}
+
+	for _, tt := range tests {
+		got, err := s.RRange(tt.key, tt.from, tt.to, 0)
+		if err != nil {
+			t.Fatalf("RRange(%q, %s, %s) error: %v", tt.key, tt.from, tt.to, err)
+		}
+		if got != tt.want {
+			t.Errorf("RRange(%q, %s, %s) = %q, want %q", tt.key, tt.from, tt.to, got, tt.want)
+		}
+	}
+}
+
+func TestRRange_InvalidArgs(t *testing.T) {
+	s := NewStorage()
+
+	tests := []struct {
+		key  string
+		from string
+		to   string
+	}{
+		{"k", "x", "5"},
+		{"k", "1", "y"},
+		{"k", "abc", "def"},
+	}
+
+	for _, tt := range tests {
+		_, err := s.RRange(tt.key, tt.from, tt.to, 0)
+		if err == nil {
+			t.Errorf("RRange(%q, %s, %s) should fail", tt.key, tt.from, tt.to)
+		}
+	}
+}
+
+func TestRRange_InvalidDB(t *testing.T) {
+	s := NewStorage()
+	_, err := s.RRange("k", "0", "1", 99)
+	if err == nil {
+		t.Fatal("expected error for invalid db")
+	}
+}

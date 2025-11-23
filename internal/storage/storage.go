@@ -2,6 +2,8 @@ package storage
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -176,4 +178,30 @@ func (d *Database) RLen(key string) (int, error) {
 		return 0, nil
 	}
 	return len(entry.Value.List), nil
+}
+
+func (s *Storage) RRange(key string, from, to string, db int) (string, error) {
+	if db >= 10 {
+		return "", fmt.Errorf("invalid database %d", db)
+	}
+	fromInt, err := strconv.Atoi(from)
+	if err != nil {
+		return "", fmt.Errorf("invalid %d as from range", db)
+	}
+	toInt, err := strconv.Atoi(to)
+	if err != nil {
+		return "", fmt.Errorf("invalid %d as to range", db)
+	}
+	return s.databases[db].RRange(key, fromInt, toInt)
+}
+
+func (d *Database) RRange(key string, from, to int) (string, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	entry, ok := d.data[key]
+	if !ok || entry.Value.Type != TypeList {
+		return "", nil
+	}
+	return strings.Join(entry.Value.List[from:to], ","), nil
 }
