@@ -49,7 +49,7 @@ func main() {
 		spited := strings.Split(line, " ")
 		cmd, args := spited[0], spited[1:]
 		switch strings.ToUpper(cmd) {
-		case string(pkg.PING_CMD):
+		case string(pkg.PING_CMD), string(pkg.SET_CMD), string(pkg.GET_CMD), string(pkg.DEL_CMD), string(pkg.RPUSH_CMD), string(pkg.RLEN_CMD):
 			resp, err := SendCmd(conn, strings.ToUpper(cmd), args...)
 			if err != nil {
 				fmt.Println(err.Error())
@@ -62,42 +62,6 @@ func main() {
 			}
 			fmt.Println(*resp)
 
-		case string(pkg.SET_CMD):
-			resp, err := SendCmd(conn, strings.ToUpper(cmd), args...)
-			if err != nil {
-				fmt.Println(err.Error())
-				return
-			}
-			if resp == nil {
-				fmt.Println("nil response from server. wait few seconds for reconnect")
-				connPool.HealthCheckerOnce()
-				continue
-			}
-			fmt.Println(*resp)
-		case string(pkg.GET_CMD):
-			resp, err := SendCmd(conn, strings.ToUpper(cmd), args...)
-			if err != nil {
-				fmt.Println(err.Error())
-				return
-			}
-			if resp == nil {
-				fmt.Println("nil response from server. wait few seconds for reconnect")
-				connPool.HealthCheckerOnce()
-				continue
-			}
-			fmt.Println(*resp)
-		case string(pkg.DEL_CMD):
-			resp, err := SendCmd(conn, strings.ToUpper(cmd), args...)
-			if err != nil {
-				fmt.Println(err.Error())
-				return
-			}
-			if resp == nil {
-				fmt.Println("nil response from server. wait few seconds for reconnect")
-				connPool.HealthCheckerOnce()
-				continue
-			}
-			fmt.Println(*resp)
 		default:
 			fmt.Println("Invalid Command")
 		}

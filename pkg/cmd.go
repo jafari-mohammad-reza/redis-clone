@@ -4,7 +4,11 @@ type CMD string
 
 const (
 	PING_CMD CMD = "PING"
-	SET_CMD  CMD = "SET"
-	GET_CMD  CMD = "GET"
-	DEL_CMD  CMD = "DEL"
+
+	SET_CMD CMD = "SET"
+	GET_CMD CMD = "GET"
+	DEL_CMD CMD = "DEL"
+
+	RPUSH_CMD CMD = "RPUSH"
+	RLEN_CMD  CMD = "RLEN"
 )

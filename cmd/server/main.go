@@ -136,6 +136,10 @@ func dispatchCommand(cmd *Command) resp.Value {
 		return handleGet(cmd)
 	case string(pkg.DEL_CMD):
 		return handleDel(cmd)
+	case string(pkg.RPUSH_CMD):
+		return handleRPush(cmd)
+	case string(pkg.RLEN_CMD):
+		return handleRLen(cmd)
 	default:
 		return resp.Value{Typ: "error", Str: "ERR unknown command '" + cmd.Name + "'"}
 	}
@@ -147,7 +151,33 @@ func handlePing(cmd *Command) resp.Value {
 	}
 	return resp.Value{Typ: "bulk", Bulk: cmd.Args[0]}
 }
+func handleRPush(cmd *Command) resp.Value {
+	if len(cmd.Args) < 2 {
+		return resp.Value{Typ: "error", Str: "ERR wrong number of arguments for 'RPUSH' command"}
+	}
 
+	key := cmd.Args[0]
+	items := cmd.Args[1:]
+
+	length, err := keyStorage.RPush(key, items, 0)
+	if err != nil {
+		return resp.Value{Typ: "error", Str: "ERR " + err.Error()}
+	}
+
+	return resp.Value{Typ: "string", Str: strconv.Itoa(length)}
+}
+func handleRLen(cmd *Command) resp.Value {
+	if len(cmd.Args) != 1 {
+		return resp.Value{Typ: "error", Str: "ERR wrong number of arguments for 'GET' command"}
+	}
+
+	length, err := keyStorage.RLen(cmd.Args[0], 0)
+	if err != nil {
+		return resp.Value{Typ: "null"}
+	}
+	fmt.Printf("length: %v\n", length)
+	return resp.Value{Typ: "string", Str: strconv.Itoa(length)}
+}
 func handleSet(cmd *Command) resp.Value {
 	if len(cmd.Args) < 2 {
 		return resp.Value{Typ: "error", Str: "ERR wrong number of arguments for 'SET' command"}
@@ -182,7 +212,7 @@ func handleGet(cmd *Command) resp.Value {
 	if entry == nil {
 		return resp.Value{Typ: "null"}
 	}
-	return resp.Value{Typ: "bulk", Bulk: entry.Value}
+	return resp.Value{Typ: "bulk", Bulk: entry.Value.String}
 }
 
 func handleDel(cmd *Command) resp.Value {

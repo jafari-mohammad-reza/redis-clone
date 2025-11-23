@@ -17,7 +17,7 @@ func TestStorage_Set_Get_Basic(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if e == nil || e.Value != "world" {
+	if e == nil || e.Value.String != "world" {
 		t.Fatalf("got %v, want world", e)
 	}
 }
@@ -59,7 +59,7 @@ func TestStorage_DatabaseIsolation(t *testing.T) {
 	e0, _ := s.Get("key", 0)
 	e1, _ := s.Get("key", 1)
 
-	if e0.Value != "db0" || e1.Value != "db1" {
+	if e0.Value.String != "db0" || e1.Value.String != "db1" {
 		t.Fatalf("databases not isolated: %v %v", e0, e1)
 	}
 }
