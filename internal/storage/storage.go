@@ -100,6 +100,8 @@ func (d *Database) Get(key string) *Entry {
 }
 
 func (s *Storage) Del(key string, db int) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if db > 10 {
 		return 0
 	}
