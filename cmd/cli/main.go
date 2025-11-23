@@ -86,6 +86,18 @@ func main() {
 				continue
 			}
 			fmt.Println(*resp)
+		case string(pkg.DEL_CMD):
+			resp, err := SendCmd(conn, strings.ToUpper(cmd), args...)
+			if err != nil {
+				fmt.Println(err.Error())
+				return
+			}
+			if resp == nil {
+				fmt.Println("nil response from server. wait few seconds for reconnect")
+				connPool.HealthCheckerOnce()
+				continue
+			}
+			fmt.Println(*resp)
 		default:
 			fmt.Println("Invalid Command")
 		}

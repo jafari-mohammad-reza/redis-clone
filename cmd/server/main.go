@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/jafari-mohammad-reza/redis-clone/internal/storage"
+	"github.com/jafari-mohammad-reza/redis-clone/pkg"
 	"github.com/jafari-mohammad-reza/redis-clone/pkg/resp"
 )
 
@@ -127,12 +128,14 @@ func getString(v resp.Value) string {
 
 func dispatchCommand(cmd *Command) resp.Value {
 	switch cmd.Name {
-	case "PING":
+	case string(pkg.PING_CMD):
 		return handlePing(cmd)
-	case "SET":
+	case string(pkg.SET_CMD):
 		return handleSet(cmd)
-	case "GET":
+	case string(pkg.GET_CMD):
 		return handleGet(cmd)
+	case string(pkg.DEL_CMD):
+		return handleDel(cmd)
 	default:
 		return resp.Value{Typ: "error", Str: "ERR unknown command '" + cmd.Name + "'"}
 	}
@@ -180,6 +183,16 @@ func handleGet(cmd *Command) resp.Value {
 		return resp.Value{Typ: "null"}
 	}
 	return resp.Value{Typ: "bulk", Bulk: entry.Value}
+}
+
+func handleDel(cmd *Command) resp.Value {
+	if len(cmd.Args) != 1 {
+		return resp.Value{Typ: "error", Str: "ERR wrong number of arguments for 'GET' command"}
+	}
+
+	count := strconv.Itoa(keyStorage.Del(cmd.Args[0], 0))
+
+	return resp.Value{Typ: "bulk", Str: count}
 }
 
 func isConnectionReset(err error) bool {
