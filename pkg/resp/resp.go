@@ -59,6 +59,22 @@ func reflectValueToInt64(v any) int64 {
 
 // UnmarshalOne reads exactly ONE complete RESP value from r
 func UnmarshalOne(r *bufio.Reader) (Value, error) {
+	b, err := r.Peek(1)
+	if err != nil {
+		if err == io.EOF {
+			return Value{}, io.EOF
+		}
+		return Value{}, err
+	}
+
+	// If it's not a valid RESP prefix, read the whole line as error/plaintext
+	if len(b) == 0 || (b[0] != '+' && b[0] != '-' && b[0] != ':' && b[0] != '$' && b[0] != '*') {
+		line, err := readLine(r)
+		if err != nil {
+			return Value{}, err
+		}
+		return Value{Typ: "error", Str: "Server sent: " + line}, nil
+	}
 	line, err := readLine(r)
 	if err != nil {
 		return Value{}, err
@@ -116,10 +132,14 @@ func readLine(r *bufio.Reader) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if len(line) < 2 || line[len(line)-2] != '\r' {
-		return "", errors.New("invalid line ending")
+	if len(line) > 0 && line[len(line)-1] == '\n' {
+		line = line[:len(line)-1] // remove trailing \n
+		if len(line) > 0 && line[len(line)-1] == '\r' {
+			line = line[:len(line)-1] // remove \r if present
+		}
+		return line, nil
 	}
-	return line[:len(line)-2], nil // strip \r\n
+	return "", errors.New("invalid line ending")
 }
 
 // WriteValue writes a Value directly to a writer (useful for servers)

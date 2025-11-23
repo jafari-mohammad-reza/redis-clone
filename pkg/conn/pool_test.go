@@ -36,9 +36,9 @@ func TestCreatePool(t *testing.T) {
 
 func Test_isAlive(t *testing.T) {
 	go func() {
-		ln, err := net.Listen("tcp", ":3080")
+		ln, err := net.Listen("tcp", ":3081")
 		if err != nil {
-			panic("failed to listen to 3080")
+			panic("failed to listen to 3081")
 		}
 		for {
 			_, err := ln.Accept()
@@ -48,7 +48,7 @@ func Test_isAlive(t *testing.T) {
 		}
 	}()
 	time.Sleep(time.Second)
-	pool := NewConnPool(":3080", 6)
+	pool := NewConnPool(":3081", 6)
 
 	t.Run("nil returns false", func(t *testing.T) {
 		if pool.isAlive(nil) {

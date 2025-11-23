@@ -91,7 +91,7 @@ func (p *Pool) healthChecker() {
 		p.mu.Unlock()
 	}
 }
-func (p *Pool) healthCheckerOnce() {
+func (p *Pool) HealthCheckerOnce() {
 	p.mu.Lock()
 	alive := make([]net.Conn, 0, len(p.conns))
 
