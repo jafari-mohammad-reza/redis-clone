@@ -203,5 +203,141 @@ func (d *Database) RRange(key string, from, to int) (string, error) {
 	if !ok || entry.Value.Type != TypeList {
 		return "", nil
 	}
-	return strings.Join(entry.Value.List[from:to], ","), nil
+
+	list := entry.Value.List
+	n := len(list)
+
+	if from < 0 {
+		from += n
+	}
+	if to < 0 {
+		to += n
+	}
+
+	if from < 0 {
+		from = 0
+	}
+	if to >= n {
+		to = n - 1
+	}
+	if from > to {
+		return "", nil
+	}
+
+	return strings.Join(list[from:to+1], ","), nil
+}
+
+func (s *Storage) LPush(key string, items []string, db int) (int, error) {
+	if db >= 10 {
+		return 0, fmt.Errorf("invalid database %d", db)
+	}
+	return s.databases[db].LPush(key, items)
+}
+func (d *Database) LPush(key string, items []string) (int, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	entry, exists := d.data[key]
+	if !exists || entry.Value.Type != TypeList {
+		entry = Entry{
+			Value: Value{
+				Type: TypeList,
+				List: []string{},
+			},
+		}
+	}
+
+	entry.Value.List = append(items, entry.Value.List...)
+
+	d.data[key] = entry
+	return len(entry.Value.List), nil
+}
+
+func (s *Storage) LRange(key string, from, to string, db int) (string, error) {
+	if db >= 10 {
+		return "", fmt.Errorf("invalid database %d", db)
+	}
+	fromInt, err := strconv.Atoi(from)
+	if err != nil {
+		return "", fmt.Errorf("invalid %d as from range", db)
+	}
+	toInt, err := strconv.Atoi(to)
+	if err != nil {
+		return "", fmt.Errorf("invalid %d as to range", db)
+	}
+	return s.databases[db].LRange(key, fromInt, toInt)
+}
+
+func (d *Database) LRange(key string, from, to int) (string, error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+
+	entry, ok := d.data[key]
+	if !ok || entry.Value.Type != TypeList {
+		return "", nil
+	}
+
+	list := entry.Value.List
+	n := len(list)
+	if n == 0 {
+		return "", nil
+	}
+
+	if from < 0 {
+		from += n
+	}
+	if to < 0 {
+		to += n
+	}
+
+	if from < 0 {
+		from = 0
+	}
+	if to >= n {
+		to = n - 1
+	}
+	if from > to {
+		return "", nil
+	}
+
+	return strings.Join(list[from:to+1], ","), nil
+}
+
+// TODO: add lpop and rpop
+func (s *Storage) LPOP(key string, from, to string, db int) (string, error) {
+	if db >= 10 {
+		return "", fmt.Errorf("invalid database %d", db)
+	}
+	fromInt, err := strconv.Atoi(from)
+	if err != nil {
+		return "", fmt.Errorf("invalid %d as from range", db)
+	}
+	toInt, err := strconv.Atoi(to)
+	if err != nil {
+		return "", fmt.Errorf("invalid %d as to range", db)
+	}
+	return s.databases[db].LPOP(key, fromInt, toInt)
+}
+
+func (d *Database) LPOP(key string, from, to int) (string, error) {
+	return "", nil
+}
+
+func (s *Storage) RPOP(key string, from, to string, db int) (string, error) {
+	if db >= 10 {
+		return "", fmt.Errorf("invalid database %d", db)
+	}
+	fromInt, err := strconv.Atoi(from)
+	if err != nil {
+		return "", fmt.Errorf("invalid %d as from range", db)
+	}
+	toInt, err := strconv.Atoi(to)
+	if err != nil {
+		return "", fmt.Errorf("invalid %d as to range", db)
+	}
+	return s.databases[db].RPOP(key, fromInt, toInt)
+}
+
+func (d *Database) RPOP(key string, from, to int) (string, error) {
+	return "", nil
 }

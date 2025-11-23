@@ -122,7 +122,6 @@ func TestStorage_Del(t *testing.T) {
 		t.Fatal("second Del should return 0")
 	}
 
-	// Check keys are really gone
 	if entry, err := s.Get("key1", 0); entry != nil || err != nil {
 		t.Fatal("key1 should be deleted")
 	}
@@ -206,36 +205,6 @@ func TestStorage_Flush_ConcurrentWithSet(t *testing.T) {
 	<-done
 }
 
-func TestRRange(t *testing.T) {
-	s := NewStorage()
-
-	s.RPush("mylist", []string{"a", "b", "c", "d", "e"}, 0)
-
-	tests := []struct {
-		key  string
-		from string
-		to   string
-		want string
-	}{
-		{"mylist", "0", "5", "a,b,c,d,e"},
-		{"mylist", "1", "4", "b,c,d"},
-		{"mylist", "0", "1", "a"},
-		{"mylist", "2", "2", ""},
-		{"mylist", "0", "0", ""},
-		{"missing", "0", "5", ""},
-	}
-
-	for _, tt := range tests {
-		got, err := s.RRange(tt.key, tt.from, tt.to, 0)
-		if err != nil {
-			t.Fatalf("RRange(%q, %s, %s) error: %v", tt.key, tt.from, tt.to, err)
-		}
-		if got != tt.want {
-			t.Errorf("RRange(%q, %s, %s) = %q, want %q", tt.key, tt.from, tt.to, got, tt.want)
-		}
-	}
-}
-
 func TestRRange_InvalidArgs(t *testing.T) {
 	s := NewStorage()
 
@@ -262,5 +231,79 @@ func TestRRange_InvalidDB(t *testing.T) {
 	_, err := s.RRange("k", "0", "1", 99)
 	if err == nil {
 		t.Fatal("expected error for invalid db")
+	}
+}
+
+func TestRRange_NegativeIndices(t *testing.T) {
+	s := NewStorage()
+
+	s.RPush("list", []string{"a", "b", "c", "d", "e"}, 0)
+
+	tests := []struct {
+		from string
+		to   string
+		want string
+	}{
+
+		{"0", "-1", "a,b,c,d,e"},
+		{"0", "4", "a,b,c,d,e"},
+		{"1", "3", "b,c,d"},
+		{"-3", "-1", "c,d,e"},
+		{"-5", "-1", "a,b,c,d,e"},
+		{"-1", "-1", "e"},
+		{"-2", "-2", "d"},
+		{"0", "0", "a"},
+		{"-10", "-1", "a,b,c,d,e"},
+		{"0", "100", "a,b,c,d,e"},
+		{"5", "10", ""},
+		{"-1", "-5", ""},
+	}
+
+	for _, tt := range tests {
+		got, err := s.RRange("list", tt.from, tt.to, 0)
+		if err != nil {
+			t.Errorf("RRange(%q, %q) error: %v", tt.from, tt.to, err)
+			continue
+		}
+		if got != tt.want {
+			t.Errorf("RRange(%q, %q) = %q, want %q", tt.from, tt.to, got, tt.want)
+		}
+	}
+
+	s.RPush("empty", []string{}, 0)
+	if got, _ := s.RRange("empty", "0", "-1", 0); got != "" {
+		t.Errorf("empty list should return empty string, got %q", got)
+	}
+
+	if got, _ := s.RRange("missing", "0", "-1", 0); got != "" {
+		t.Errorf("missing key should return empty string, got %q", got)
+	}
+}
+func TestLRange(t *testing.T) {
+	s := NewStorage()
+
+	s.RPush("mylist", []string{"a", "b", "c", "d", "e"}, 0)
+
+	tests := []struct {
+		from string
+		to   string
+		want string
+	}{
+		{"0", "-1", "a,b,c,d,e"},
+		{"1", "3", "b,c,d"},
+		{"-3", "-1", "c,d,e"},
+		{"-1", "-1", "e"},
+		{"0", "0", "a"},
+		{"-5", "-3", "a,b,c"},
+		{"-10", "10", "a,b,c,d,e"},
+		{"5", "10", ""},
+		{"-1", "-5", ""},
+	}
+
+	for _, tt := range tests {
+		got, _ := s.LRange("mylist", tt.from, tt.to, 0)
+		if got != tt.want {
+			t.Errorf("LRange(%s, %s) = %q, want %q", tt.from, tt.to, got, tt.want)
+		}
 	}
 }
