@@ -1,12 +1,14 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"log"
 	"os/signal"
 	"syscall"
 
 	"github.com/jafari-mohammad-reza/redis-clone/pkg/conn"
+	"github.com/jafari-mohammad-reza/redis-clone/pkg/resp"
 )
 
 func main() {
@@ -23,9 +25,16 @@ func main() {
 		log.Fatalf("failed to get conn from conn pool")
 		return
 	}
-
-	if _, err := conn.Write([]byte("PING")); err != nil { // send paylaod using RESP builder
+	pingCmd := []any{"PING"}
+	data, _ := resp.Marshal(pingCmd)
+	if _, err := conn.Write(data); err != nil { // send paylaod using RESP builder
 		log.Fatalf("failed to get PONG response: %s", err.Error())
+		return
+	}
+	reader := bufio.NewReader(conn)
+	val, _ := resp.UnmarshalOne(reader)
+	if val.Str != "PONG" {
+		log.Fatal("failed to get PONG response")
 		return
 	}
 

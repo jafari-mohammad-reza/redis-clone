@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"io"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/jafari-mohammad-reza/redis-clone/pkg/resp"
 )
 
 func main() {
@@ -55,10 +58,9 @@ func handleConn(parentCtx context.Context, conn net.Conn) {
 	defer cancel()
 
 	go func() {
-		buf := make([]byte, 1)
-
+		reader := bufio.NewReader(conn)
 		for {
-			_, err := conn.Read(buf)
+			val, err := resp.UnmarshalOne(reader)
 			if err != nil {
 				if errors.Is(err, net.ErrClosed) ||
 					errors.Is(err, io.EOF) ||
@@ -71,6 +73,14 @@ func handleConn(parentCtx context.Context, conn net.Conn) {
 				return
 			}
 
+			if val.Typ == "array" && len(val.Array) > 0 {
+				cmd := val.Array[0].Str
+				if cmd == "PING" {
+					resp.WriteValue(conn, resp.Value{Typ: "string", Str: "PONG"})
+				} else {
+					resp.WriteValue(conn, resp.Value{Typ: "string", Str: "OK"})
+				}
+			}
 		}
 	}()
 

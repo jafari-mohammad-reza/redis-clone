@@ -91,6 +91,27 @@ func (p *Pool) healthChecker() {
 		p.mu.Unlock()
 	}
 }
+func (p *Pool) healthCheckerOnce() {
+	p.mu.Lock()
+	alive := make([]net.Conn, 0, len(p.conns))
+
+	for _, c := range p.conns {
+		if c != nil && p.isAlive(c) {
+			alive = append(alive, c)
+		} else {
+			if c != nil {
+				c.Close()
+			}
+		}
+	}
+
+	for len(alive) < p.size {
+		alive = append(alive, p.dial())
+	}
+
+	p.conns = alive
+	p.mu.Unlock()
+}
 
 func (p *Pool) Close() {
 	p.mu.Lock()
