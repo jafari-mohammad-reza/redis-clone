@@ -6,21 +6,6 @@ import (
 	"time"
 )
 
-type Storage struct {
-	// TODO:  lru can be implemented to return most used keys without search in own database
-	// we use pointer to database to be able to use their receiver functions
-	databases map[int]*Database
-	mu        sync.RWMutex
-}
-
-type Database struct {
-	data map[string]Entry
-	mu   sync.RWMutex
-}
-type Entry struct {
-	Value Value
-	Exp   time.Time
-}
 type ValueType int8
 
 const (
@@ -32,66 +17,66 @@ type Value struct {
 	Type   ValueType
 	String string
 	List   []string
+	Expiry time.Time
+}
+
+type Entry struct {
+	Value Value
+}
+
+type Database struct {
+	data map[string]Entry
+	mu   sync.RWMutex
+}
+
+type Storage struct {
+	databases map[int]*Database
+	mu        sync.RWMutex
 }
 
 func NewStorage() *Storage {
 	databases := make(map[int]*Database, 10)
-	for i := range 10 {
+	for i := 0; i < 10; i++ {
 		databases[i] = &Database{
 			data: make(map[string]Entry),
-			mu:   sync.RWMutex{},
 		}
-		go databases[i].Exp()
 	}
 	return &Storage{
 		databases: databases,
-		mu:        sync.RWMutex{},
 	}
-}
-
-func (s *Storage) Flush() error {
-	for _, db := range s.databases {
-		if err := db.Flush(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (d *Database) Flush() error {
-	d.mu.Lock()
-	d.data = make(map[string]Entry) // recreate database
-	d.mu.Unlock()
-	return nil
 }
 
 func (s *Storage) Set(key, val string, exp time.Duration, db int) error {
-
-	if db > 10 {
+	if db >= 10 {
 		return fmt.Errorf("invalid database %d", db)
 	}
-	if err := s.databases[db].Set(key, val, exp); err != nil {
-		return fmt.Errorf("failed to set %s in db %d: %s", key, db, err.Error())
-	}
-	return nil
+	return s.databases[db].Set(key, val, exp)
 }
+
 func (d *Database) Set(key, val string, exp time.Duration) error {
 	d.mu.Lock()
-	d.data[key] = Entry{
-		Value: Value{Type: TypeString, String: val},
-		Exp:   time.Now().Add(exp),
+	defer d.mu.Unlock()
+
+	expiry := time.Time{}
+	if exp > 0 {
+		expiry = time.Now().Add(exp)
 	}
-	d.mu.Unlock()
+
+	d.data[key] = Entry{
+		Value: Value{
+			Type:   TypeString,
+			String: val,
+			Expiry: expiry,
+		},
+	}
 	return nil
 }
 
 func (s *Storage) Get(key string, db int) (*Entry, error) {
-	if db > 10 {
+	if db >= 10 {
 		return nil, fmt.Errorf("invalid database %d", db)
 	}
-	val := s.databases[db].Get(key)
-
-	return val, nil
+	return s.databases[db].Get(key), nil
 }
 
 func (d *Database) Get(key string) *Entry {
@@ -101,17 +86,19 @@ func (d *Database) Get(key string) *Entry {
 	if !ok {
 		return nil
 	}
-	if !entry.Exp.IsZero() && entry.Exp.Before(time.Now()) { // passive expiry
-		// it means this is expired
+
+	if !entry.Value.Expiry.IsZero() && time.Now().After(entry.Value.Expiry) {
+		d.mu.Lock()
 		delete(d.data, key)
+		d.mu.Unlock()
 		return nil
 	}
+
 	return &entry
 }
 
 func (s *Storage) Del(key string, db int) int {
-
-	if db > 10 {
+	if db >= 10 {
 		return 0
 	}
 	return s.databases[db].Del(key)
@@ -124,56 +111,57 @@ func (d *Database) Del(key string) int {
 	if !ok {
 		return 0
 	}
+	d.mu.Lock()
 	delete(d.data, key)
+	d.mu.Unlock()
 	return 1
 }
 
-func (d *Database) Exp() {
-	tk := time.NewTicker(time.Minute)
-	defer tk.Stop()
-	for range tk.C {
-		for key, entry := range d.data {
-			if !entry.Exp.IsZero() && entry.Exp.Before(time.Now()) {
-				d.mu.RLock()
-				delete(d.data, key)
-				d.mu.RUnlock()
-			}
-		}
+func (s *Storage) Flush() error {
+	s.mu.RLock()
+	dbs := make([]*Database, 0, len(s.databases))
+	for _, db := range s.databases {
+		dbs = append(dbs, db)
 	}
+	s.mu.RUnlock()
+
+	for _, db := range dbs {
+		db.mu.Lock()
+		db.data = make(map[string]Entry)
+		db.mu.Unlock()
+	}
+	return nil
 }
 
 func (s *Storage) RPush(key string, items []string, db int) (int, error) {
-
-	if db > 10 {
+	if db >= 10 {
 		return 0, fmt.Errorf("invalid database %d", db)
 	}
 	return s.databases[db].RPush(key, items)
 }
+
 func (d *Database) RPush(key string, items []string) (int, error) {
-	d.mu.RLock()
-	exist, ok := d.data[key]
-	d.mu.RUnlock()
-	if !ok {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	entry, exists := d.data[key]
+	if !exists || entry.Value.Type != TypeList {
 		d.data[key] = Entry{
 			Value: Value{
 				Type: TypeList,
-				List: items,
+				List: make([]string, 0),
 			},
 		}
-		return len(items), nil
+		entry = d.data[key]
 	}
 
-	for _, item := range items {
-		exist.Value.List = append(exist.Value.List, item)
-	}
-	d.mu.Lock()
-	d.data[key] = exist
-	d.mu.Unlock()
-	return len(exist.Value.List), nil
+	entry.Value.List = append(entry.Value.List, items...)
+	d.data[key] = entry
+	return len(entry.Value.List), nil
 }
 
 func (s *Storage) RLen(key string, db int) (int, error) {
-	if db > 10 {
+	if db >= 10 {
 		return 0, fmt.Errorf("invalid database %d", db)
 	}
 	return s.databases[db].RLen(key)
@@ -181,13 +169,11 @@ func (s *Storage) RLen(key string, db int) (int, error) {
 
 func (d *Database) RLen(key string) (int, error) {
 	d.mu.RLock()
-	list, ok := d.data[key]
-	d.mu.RUnlock()
-	if !ok {
+	defer d.mu.RUnlock()
+
+	entry, ok := d.data[key]
+	if !ok || entry.Value.Type != TypeList {
 		return 0, nil
 	}
-	if list.Value.Type != TypeList {
-		return 0, nil
-	}
-	return len(list.Value.List), nil
+	return len(entry.Value.List), nil
 }
