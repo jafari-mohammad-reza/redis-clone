@@ -387,3 +387,72 @@ func (d *Database) RPOP(key string, count int) ([]string, error) {
 
 	return result, nil
 }
+
+func (s *Storage) BLPOP(key string, count, timeoutSec, db int) ([]string, error) {
+	if db >= 10 {
+		return nil, fmt.Errorf("invalid database %d", db)
+	}
+	return s.databases[db].BLPOP(key, count, timeoutSec)
+}
+
+func (d *Database) BLPOP(key string, count, timeoutSec int) ([]string, error) {
+	if count <= 0 {
+		count = 1
+	}
+
+	deadline := time.Now().Add(time.Duration(timeoutSec) * time.Second)
+	if timeoutSec == 0 {
+		deadline = time.Time{}
+	}
+
+	for {
+		d.mu.RLock()
+		entry, exists := d.data[key]
+		hasItems := exists && entry.Value.Type == TypeList && len(entry.Value.List) >= count
+		d.mu.RUnlock()
+
+		if hasItems {
+			return d.LPOP(key, count)
+		}
+
+		if !deadline.IsZero() && time.Now().After(deadline) {
+			return nil, nil
+		}
+
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+func (s *Storage) BRPOP(key string, count, timeoutSec, db int) ([]string, error) {
+	if db >= 10 {
+		return nil, fmt.Errorf("invalid database %d", db)
+	}
+	return s.databases[db].BRPOP(key, count, timeoutSec)
+}
+
+func (d *Database) BRPOP(key string, count, timeoutSec int) ([]string, error) {
+	if count <= 0 {
+		count = 1
+	}
+
+	deadline := time.Now().Add(time.Duration(timeoutSec) * time.Second)
+	if timeoutSec == 0 {
+		deadline = time.Time{}
+	}
+
+	for {
+		d.mu.RLock()
+		entry, exists := d.data[key]
+		hasItems := exists && entry.Value.Type == TypeList && len(entry.Value.List) >= count
+		d.mu.RUnlock()
+
+		if hasItems {
+			return d.RPOP(key, count)
+		}
+
+		if !deadline.IsZero() && time.Now().After(deadline) {
+			return nil, nil
+		}
+
+		time.Sleep(50 * time.Millisecond)
+	}
+}
