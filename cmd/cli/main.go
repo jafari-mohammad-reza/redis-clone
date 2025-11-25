@@ -49,7 +49,7 @@ func main() {
 		spited := strings.Split(line, " ")
 		cmd, args := spited[0], spited[1:]
 		switch strings.ToUpper(cmd) {
-		case string(pkg.PING_CMD), string(pkg.SET_CMD), string(pkg.GET_CMD), string(pkg.DEL_CMD), string(pkg.RPUSH_CMD), string(pkg.RLEN_CMD), string(pkg.RRANGE_CMD):
+		case string(pkg.PING_CMD), string(pkg.SET_CMD), string(pkg.GET_CMD), string(pkg.DEL_CMD), string(pkg.RPUSH_CMD), string(pkg.RLEN_CMD), string(pkg.RRANGE_CMD), string(pkg.LPOP_CMD), string(pkg.RPOP_CMD):
 			resp, err := SendCmd(conn, strings.ToUpper(cmd), args...)
 			if err != nil {
 				fmt.Println(err.Error())

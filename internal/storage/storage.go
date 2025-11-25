@@ -304,40 +304,86 @@ func (d *Database) LRange(key string, from, to int) (string, error) {
 }
 
 // TODO: add lpop and rpop
-func (s *Storage) LPOP(key string, from, to string, db int) (string, error) {
+func (s *Storage) LPOP(key string, count, db int) ([]string, error) {
 	if db >= 10 {
-		return "", fmt.Errorf("invalid database %d", db)
+		return nil, fmt.Errorf("invalid database %d", db)
 	}
-	fromInt, err := strconv.Atoi(from)
-	if err != nil {
-		return "", fmt.Errorf("invalid %d as from range", db)
-	}
-	toInt, err := strconv.Atoi(to)
-	if err != nil {
-		return "", fmt.Errorf("invalid %d as to range", db)
-	}
-	return s.databases[db].LPOP(key, fromInt, toInt)
+	return s.databases[db].LPOP(key, count)
 }
 
-func (d *Database) LPOP(key string, from, to int) (string, error) {
-	return "", nil
+func (d *Database) LPOP(key string, count int) ([]string, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	entry, exists := d.data[key]
+	if !exists || entry.Value.Type != TypeList {
+		return nil, nil
+	}
+
+	list := entry.Value.List
+	n := len(list)
+	if n == 0 {
+		return nil, nil
+	}
+
+	if count < 0 || count > n {
+		count = n
+	}
+
+	result := make([]string, count)
+
+	if count == 0 {
+		result = []string{list[0]}
+	} else {
+		copy(result, list[:count])
+	}
+
+	entry.Value.List = list[count:]
+	d.data[key] = entry
+
+	if len(entry.Value.List) == 0 {
+		delete(d.data, key)
+	}
+
+	return result, nil
 }
 
-func (s *Storage) RPOP(key string, from, to string, db int) (string, error) {
+func (s *Storage) RPOP(key string, count, db int) ([]string, error) {
 	if db >= 10 {
-		return "", fmt.Errorf("invalid database %d", db)
+		return nil, fmt.Errorf("invalid database %d", db)
 	}
-	fromInt, err := strconv.Atoi(from)
-	if err != nil {
-		return "", fmt.Errorf("invalid %d as from range", db)
-	}
-	toInt, err := strconv.Atoi(to)
-	if err != nil {
-		return "", fmt.Errorf("invalid %d as to range", db)
-	}
-	return s.databases[db].RPOP(key, fromInt, toInt)
+	return s.databases[db].RPOP(key, count)
 }
 
-func (d *Database) RPOP(key string, from, to int) (string, error) {
-	return "", nil
+func (d *Database) RPOP(key string, count int) ([]string, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	entry, exists := d.data[key]
+	if !exists || entry.Value.Type != TypeList {
+		return nil, nil
+	}
+
+	list := entry.Value.List
+	n := len(list)
+	if n == 0 {
+		return nil, nil
+	}
+
+	if count < 0 || count > n {
+		count = n
+	}
+
+	start := n - count
+	result := make([]string, count)
+	copy(result, list[start:])
+
+	entry.Value.List = list[:start]
+	d.data[key] = entry
+
+	if len(entry.Value.List) == 0 {
+		delete(d.data, key)
+	}
+
+	return result, nil
 }

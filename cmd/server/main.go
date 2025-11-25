@@ -142,13 +142,66 @@ func dispatchCommand(cmd *Command) resp.Value {
 		return handleRLen(cmd)
 	case string(pkg.RRANGE_CMD):
 		return handleRRange(cmd)
+	case string(pkg.LPOP_CMD):
+		return handleLpop(cmd)
+	case string(pkg.RPOP_CMD):
+		return handleRpop(cmd)
 	default:
 		return resp.Value{Typ: "error", Str: "ERR unknown command '" + cmd.Name + "'"}
 	}
 }
+
+func handleLpop(cmd *Command) resp.Value {
+	if len(cmd.Args) < 1 {
+		return resp.Value{Typ: "error", Str: "ERR wrong number of arguments for 'LPOP' command"}
+	}
+	var err error
+	var count int
+	if len(cmd.Args) > 1 {
+		count, err = strconv.Atoi(cmd.Args[1])
+		if err != nil {
+			count = 0
+		}
+	} else {
+		count = 0
+	}
+	items, err := keyStorage.LPOP(cmd.Args[0], count, 0)
+	if err != nil {
+		return resp.Value{Typ: "null"}
+	}
+	arr := make([]resp.Value, len(items))
+	for _, item := range items {
+		arr = append(arr, resp.Value{Typ: "string", Str: item})
+	}
+	return resp.Value{Typ: "array", Array: arr}
+}
+func handleRpop(cmd *Command) resp.Value {
+	if len(cmd.Args) < 1 {
+		return resp.Value{Typ: "error", Str: "ERR wrong number of arguments for 'RPOP' command"}
+	}
+	var err error
+	var count int
+	if len(cmd.Args) > 1 {
+		count, err = strconv.Atoi(cmd.Args[1])
+		if err != nil {
+			count = 0
+		}
+	} else {
+		count = 0
+	}
+	items, err := keyStorage.RPOP(cmd.Args[0], count, 0)
+	if err != nil {
+		return resp.Value{Typ: "null"}
+	}
+	arr := make([]resp.Value, len(items))
+	for _, item := range items {
+		arr = append(arr, resp.Value{Typ: "string", Str: item})
+	}
+	return resp.Value{Typ: "array", Array: arr}
+}
 func handleRRange(cmd *Command) resp.Value {
 	if len(cmd.Args) < 3 {
-		return resp.Value{Typ: "error", Str: "ERR wrong number of arguments for 'GET' command"}
+		return resp.Value{Typ: "error", Str: "ERR wrong number of arguments for 'RRANGE' command"}
 	}
 
 	items, err := keyStorage.RRange(cmd.Args[0], cmd.Args[1], cmd.Args[2], 0)
@@ -181,7 +234,7 @@ func handleRPush(cmd *Command) resp.Value {
 }
 func handleRLen(cmd *Command) resp.Value {
 	if len(cmd.Args) != 1 {
-		return resp.Value{Typ: "error", Str: "ERR wrong number of arguments for 'GET' command"}
+		return resp.Value{Typ: "error", Str: "ERR wrong number of arguments for 'RLEN' command"}
 	}
 
 	length, err := keyStorage.RLen(cmd.Args[0], 0)
@@ -230,7 +283,7 @@ func handleGet(cmd *Command) resp.Value {
 
 func handleDel(cmd *Command) resp.Value {
 	if len(cmd.Args) != 1 {
-		return resp.Value{Typ: "error", Str: "ERR wrong number of arguments for 'GET' command"}
+		return resp.Value{Typ: "error", Str: "ERR wrong number of arguments for 'DEL' command"}
 	}
 
 	count := strconv.Itoa(keyStorage.Del(cmd.Args[0], 0))

@@ -307,3 +307,32 @@ func TestLRange(t *testing.T) {
 		}
 	}
 }
+
+func TestLPOP(t *testing.T) {
+	s := NewStorage()
+	db := s.databases[0]
+	inserted, err := db.RPush("test", []string{"first", "second", "third", "forth", "fifth", "sixth"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if inserted != 6 {
+		t.Fatalf("the 'test' key must has 6 inserted")
+	}
+	first, err := db.LPOP("test", 0)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(first) != 1 {
+		t.Fatalf("first should be 1 length")
+	}
+	second, err := db.LPOP("test", 3)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(second) != 3 {
+		t.Fatalf("second should be 3 length")
+	}
+
+}
