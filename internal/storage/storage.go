@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -13,13 +14,20 @@ type ValueType int8
 const (
 	TypeString ValueType = iota
 	TypeList
+	TypeStream
 )
 
 type Value struct {
-	Type   ValueType
-	String string
-	List   []string
-	Expiry time.Time
+	Type    ValueType
+	String  string
+	List    []string
+	Streams []Stream
+	Expiry  time.Time
+}
+type Stream struct {
+	Key     string
+	ID      string
+	Entries [2]string
 }
 
 type Entry struct {
@@ -455,4 +463,102 @@ func (d *Database) BRPOP(key string, count, timeoutSec int) ([]string, error) {
 
 		time.Sleep(50 * time.Millisecond)
 	}
+}
+
+func (s *Storage) TypeCmd(key string, db int) (*ValueType, error) {
+	return s.databases[db].TypeCmd(key)
+}
+
+func (d *Database) TypeCmd(key string) (*ValueType, error) {
+	d.mu.RLock()
+	item, ok := d.data[key]
+	d.mu.RUnlock()
+	if !ok {
+		return nil, errors.New("key does not exists")
+	}
+	return &item.Value.Type, nil
+}
+
+func (s *Storage) XAdd(key, ID string, pairs [][2]string, db int) error {
+	return s.databases[db].XAdd(key, ID, pairs)
+}
+
+func (d *Database) XAdd(key, ID string, pairs [][2]string) error {
+	/*
+		The ID must be strictly greater than the last entry's ID.
+		The millisecondsTime portion of the new ID must be greater than or equal to the last entry's millisecondsTime.
+		If the millisecondsTime values are equal, the sequenceNumber of the new ID must be greater than the last entry's sequenceNumber.
+	*/
+	item, ok := d.data[key]
+	if ID == "" {
+		// id is created by milisecond time stamp + - + sequence number
+		// first find last sequence
+		if !ok || len(item.Value.Streams) == 0 {
+			// sequence is 0
+			ID = fmt.Sprintf("%d-%d", time.Now().UnixMilli(), 0)
+		} else {
+			ID = fmt.Sprintf("%d-%d", time.Now().UnixMilli(), len(item.Value.Streams)-1)
+		}
+	} else {
+		// validate ID
+		if ok && len(item.Value.Streams) > 0 {
+			lastStream := item.Value.Streams[len(item.Value.Streams)-1]
+			lastParts := strings.Split(lastStream.ID, "-")
+			newParts := strings.Split(ID, "-")
+			if len(lastParts) != 2 || len(newParts) != 2 {
+				return errors.New("invalid ID format")
+			}
+			lastMs, err := strconv.ParseInt(lastParts[0], 10, 64)
+			if err != nil {
+				return errors.New("invalid last ID format")
+			}
+			newMs, err := strconv.ParseInt(newParts[0], 10, 64)
+			if err != nil {
+				return errors.New("invalid new ID format")
+			}
+			lastSeq, err := strconv.ParseInt(lastParts[1], 10, 64)
+			if err != nil {
+				return errors.New("invalid last ID format")
+			}
+			newSeq, err := strconv.ParseInt(newParts[1], 10, 64)
+			if err != nil {
+				return errors.New("invalid new ID format")
+			}
+			if newMs < lastMs || (newMs == lastMs && newSeq <= lastSeq) {
+				return errors.New("ID must be greater than the last entry's ID")
+			}
+		}
+	}
+
+	if !ok || len(item.Value.Streams) == 0 {
+		d.data[key] = Entry{
+			Value{
+				Type:    TypeStream,
+				Streams: make([]Stream, 0, len(pairs)),
+			},
+		}
+		for _, pair := range pairs {
+			stream := Stream{
+				Key:     pair[0],
+				ID:      ID,
+				Entries: [2]string{pair[0], pair[1]},
+			}
+			item = d.data[key]
+			item.Value.Streams = append(item.Value.Streams, stream)
+			d.data[key] = item
+		}
+		return nil
+	}
+	for _, pair := range pairs {
+		stream := Stream{
+			Key:     pair[0],
+			ID:      ID,
+			Entries: [2]string{pair[0], pair[1]},
+		}
+		item = d.data[key]
+		item.Value.Streams = append(item.Value.Streams, stream)
+		d.data[key] = item
+	}
+
+	return nil
 }
