@@ -27,7 +27,7 @@ type Value struct {
 type Stream struct {
 	Key     string
 	ID      string
-	Entries [2]string
+	Entries [][2]string
 }
 
 type Entry struct {
@@ -537,28 +537,55 @@ func (d *Database) XAdd(key, ID string, pairs [][2]string) error {
 				Streams: make([]Stream, 0, len(pairs)),
 			},
 		}
-		for _, pair := range pairs {
-			stream := Stream{
-				Key:     pair[0],
-				ID:      ID,
-				Entries: [2]string{pair[0], pair[1]},
-			}
-			item = d.data[key]
-			item.Value.Streams = append(item.Value.Streams, stream)
-			d.data[key] = item
-		}
-		return nil
 	}
-	for _, pair := range pairs {
-		stream := Stream{
-			Key:     pair[0],
-			ID:      ID,
-			Entries: [2]string{pair[0], pair[1]},
-		}
-		item = d.data[key]
-		item.Value.Streams = append(item.Value.Streams, stream)
-		d.data[key] = item
+	stream := Stream{
+		Key:     key,
+		ID:      ID,
+		Entries: pairs,
 	}
+	item = d.data[key]
+	item.Value.Streams = append(item.Value.Streams, stream)
+	d.data[key] = item
 
 	return nil
+}
+
+type XRangeResp struct {
+	ID      string
+	Entries [][2]string
+}
+
+func (s *Storage) XRange(key, start, end string, db int) ([]XRangeResp, error) {
+	if db >= 10 {
+		return nil, fmt.Errorf("invalid database %d", db)
+	}
+
+	return s.databases[db].XRange(key, start, end)
+}
+
+func (d *Database) XRange(key, start, end string) ([]XRangeResp, error) {
+	d.mu.RLock()
+	item, ok := d.data[key]
+	d.mu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("%s not exists", key)
+	}
+	if len(item.Value.Streams) == 0 {
+		return nil, fmt.Errorf("%s is not stream", key)
+	}
+	found := make([]Stream, 0)
+	startInt, _ := strconv.Atoi(start)
+	endInt, _ := strconv.Atoi(end)
+	for _, stream := range item.Value.Streams {
+		id := strings.Split(stream.ID, "-")[0]
+		idMils, _ := strconv.Atoi(id)
+		if (strings.HasPrefix(start, "+") && idMils <= endInt) || (strings.HasPrefix(end, "-") && idMils >= startInt) || (idMils >= startInt && idMils <= endInt) {
+			found = append(found, stream)
+		}
+	}
+	resp := make([]XRangeResp, 0, len(found))
+	for _, f := range found {
+		resp = append(resp, XRangeResp{ID: f.ID, Entries: f.Entries})
+	}
+	return resp, nil
 }
