@@ -22,10 +22,11 @@ import (
 
 var once sync.Once
 var keyStorage *storage.Storage
-
+var queues map[string][]string // connectionIp-transactionTImestamp => list of commands
 func main() {
 	once.Do(func() {
 		keyStorage = storage.NewStorage()
+		queues = make(map[string][]string)
 	})
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
@@ -80,7 +81,7 @@ func handleConn(parentCtx context.Context, conn net.Conn) {
 				return
 			}
 
-			response := dispatchCommand(cmd)
+			response := dispatchCommand(cmd, conn)
 			if err := resp.WriteValue(conn, response); err != nil {
 				return
 			}
@@ -126,7 +127,7 @@ func getString(v resp.Value) string {
 	return v.Str
 }
 
-func dispatchCommand(cmd *Command) resp.Value {
+func dispatchCommand(cmd *Command, conn net.Conn) resp.Value {
 	switch cmd.Name {
 	case string(pkg.PING_CMD):
 		return handlePing(cmd)
@@ -146,9 +147,68 @@ func dispatchCommand(cmd *Command) resp.Value {
 		return handleLpop(cmd)
 	case string(pkg.RPOP_CMD):
 		return handleRpop(cmd)
+
+	case string(pkg.MULTI_CMD):
+		return handleMulti(cmd, conn.RemoteAddr())
+	case string(pkg.DISCARD_CMD):
+		return handleDiscard(cmd, conn.RemoteAddr())
+	case string(pkg.EXEC_CMD):
+		return handleExec(cmd, conn.RemoteAddr())
 	default:
 		return resp.Value{Typ: "error", Str: "ERR unknown command '" + cmd.Name + "'"}
 	}
+}
+
+func handleMulti(cmd *Command, remoteAddr net.Addr) resp.Value {
+	addrTransactions := 0
+	for key, _ := range queues {
+		if strings.HasPrefix(key, remoteAddr.String()) {
+			addrTransactions++
+		}
+	}
+	transactionId := fmt.Sprintf("%s-%d", remoteAddr.String(), addrTransactions)
+	fmt.Printf("transactionId: %v\n", transactionId)
+	_, ok := queues[transactionId]
+	if !ok {
+		queues[transactionId] = make([]string, 0)
+	}
+	return resp.Value{Str: "OK", Typ: "string"}
+}
+func handleDiscard(cmd *Command, remoteAddr net.Addr) resp.Value {
+	addrTransactions := 0
+	for key, _ := range queues {
+		if strings.HasPrefix(key, remoteAddr.String()) {
+			addrTransactions++
+		}
+	}
+	transactionId := fmt.Sprintf("%s-%d", remoteAddr.String(), addrTransactions)
+	delete(queues, transactionId)
+	return resp.Value{Str: "OK", Typ: "string"}
+}
+func handleExec(cmd *Command, remoteAddr net.Addr) resp.Value {
+	addrTransactions := 0
+	for key, _ := range queues {
+		if strings.HasPrefix(key, remoteAddr.String()) {
+			addrTransactions++
+		}
+	}
+	transactionId := fmt.Sprintf("%s-%d", remoteAddr.String(), addrTransactions)
+	transaction, ok := queues[transactionId]
+	if !ok || len(transaction) == 0 {
+		return resp.Value{Str: "OK", Typ: "string"}
+	}
+	for _, command := range transaction {
+		command := strings.Split(command, " ")[0]
+
+		cmd := Command{
+			Name: command,
+			Args: strings.Split(command, " ")[1:],
+		}
+		fmt.Printf("cmd: %v\n", cmd)
+		resp := dispatchCommand(&cmd, nil)
+		fmt.Printf("resp: %v\n", resp)
+	}
+	return resp.Value{Str: "OK", Typ: "string"} // TODO: return failed if any command failed to execute
 }
 
 func handleLpop(cmd *Command) resp.Value {
