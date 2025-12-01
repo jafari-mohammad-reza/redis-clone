@@ -9,3 +9,5 @@ https://app.codecrafters.io/courses/redis
 some features would be implemented
 
 there is no use of any third party library other than std lib
+
+code is messy as hell and its just for experience to know redis better and have fun

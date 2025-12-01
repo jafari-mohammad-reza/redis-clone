@@ -15,6 +15,8 @@ const (
 	TypeString ValueType = iota
 	TypeList
 	TypeStream
+	TypeTransaction
+	TypeInt
 )
 
 type Value struct {
@@ -23,6 +25,7 @@ type Value struct {
 	List    []string
 	Streams []Stream
 	Expiry  time.Time
+	Num     int
 }
 type Stream struct {
 	Key     string
@@ -588,4 +591,29 @@ func (d *Database) XRange(key, start, end string) ([]XRangeResp, error) {
 		resp = append(resp, XRangeResp{ID: f.ID, Entries: f.Entries})
 	}
 	return resp, nil
+}
+
+func (s *Storage) Incr(key string, db int) error {
+	if db >= 10 {
+		return fmt.Errorf("invalid database %d", db)
+	}
+
+	return s.databases[db].Incr(key)
+}
+
+func (d *Database) Incr(key string) error {
+	d.mu.RLock()
+	item, ok := d.data[key]
+	d.mu.RUnlock()
+
+	if !ok {
+		d.mu.Lock()
+		d.data[key] = Entry{Value: Value{Type: TypeInt, Num: 1}}
+		d.mu.Unlock()
+	} else {
+		d.mu.Lock()
+		item.Value.Num++
+		d.mu.Unlock()
+	}
+	return nil
 }
